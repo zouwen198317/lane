@@ -1,0 +1,27 @@
+**文件名：lane.cpp
+**算法功能：实现车道检测
+一、主要流程
+1、读取视频
+2、图像预处理
+　　　图像预处理包括：
+　　　1）彩色图像->灰度图像：cvtColor
+　　　2）模糊：cv::blur
+　　　3）二值化：cv::threshold，阈值为150
+　　　4）膨胀腐蚀
+3、检测车道：detectLane(cv::Mat &frame,std::vector<cv::Vec4i>lines)
+　　　1) VMeanDist(cv::Mat src,cv::Mat &dist)
+　　　求每一行的均值，输入src为二值图像，输出dist和src具有相同行数的数组
+　　　2) findHorizon(cv::Mat dist)
+　　　找到地平线，dist为上一步中求出的每行均值，返回找到的地平线所在的行号。
+　　　算法中找到的第一个灰度均值小于10的行作为地平线，其假设是在二值化中天空都为白色。
+　　　3）将地平线以上的背景置为黑色
+　　　4）边缘检测cv::Canny
+　　　5）直线Hough变换cv::HoughLinesP
+　　　6）对上一步检测到的Hough直线进行处理判断
+　　　A)对Hough直线进行归类：直线中点在图像左边(以图像列数的一半为界)的则放到左边候选直线vector中，反之归到右边候选列表中
+　　　B)对两边候选直线进行过滤：filterLines(std::vector<Line> &lines,bool right)
+right用于标记直线属于左边候选还是右边候选。
+　　　I）直线过滤：滤除和竖直角度偏差较大的直线
+　　　II)直线排序： (l0.length*l0.length/fabsf(l0.angle-CV_PI/2)越大的直线排序靠前，	即直线越长，离竖直线角度越小，则排序越靠前。
+C)
+4、跟踪车辆：trackvehicle

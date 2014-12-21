@@ -1,0 +1,138 @@
+车道检测开发文档
+
+
+文档说明	车道检测需求说明及算法设计和实现
+创建日期	2014.12.16
+作者	周亚飞
+
+
+
+修改说明：
+日期	修改说明
+2014.12.16	创建文档
+	
+	
+
+1.输入
+　　　本功能的输入为视频图像或直接从摄像头读取的连续帧图像。
+2.功能需求
+2.1 检测单车道线
+　　　检测出车身所在车道的车道线。
+2.2 检测多车道线
+　　　检测出道路上所有的车道线
+2.3 检测并识别车道上的标记
+3.算法流程
+3.1 单车道线检测
+　　　1、图像预处理。提取有效边缘点（主要是竖直方向边缘的）
+　　　2、检测直线。根据边缘图像，检测出主要直线，即车道上标记的直线。对直线进行筛选，提取有效的直线。并对检测到的直线进行聚类，得到两类直线中心。
+　　　3、用检测到的直线对Kalman滤波器进行更新，并预测下一帧车道线的位置。
+
+4.算法实现及接口说明
+4.1 类和结构体
+4.1.1车道检测类LaneDetecProcessor
+class LaneDetecProcessor : public FrameProcessor
+{
+public:
+	LaneDetecProcessor();
+
+	virtual void initial();
+	virtual void process(cv::Mat &frame, cv::Mat &output);
+
+protected:
+	enum {  VERTICAL_EDGES = 0, HORIZONTAL_EDGES = 1, ALL_EDGES = 2 };
+	enum {  SINGLE_LANE,  MULTI_LANE	};
+
+	/* 
+	*  detect the edge of a grayscale image gragImage,return the edge image. 
+	*/
+	Mat findEdges(const Mat& grayImage);
+
+	/*
+	*	find lines in an edge image edgeImage, return a vector of Line.
+	*/
+	vector<Line> findLines(const Mat& edgeImage);
+private:
+	int edgeType;
+	int laneType;
+
+	vector<Mat> frames;
+	cv::Point vanishPoint;
+	Mat currentFrame;
+
+	CKalmanFilter* m_filter;
+};
+　　　
+4.1.2 直线类Line
+class Line
+{
+	public:
+		Point2d p0,p1;
+		float angle,k,b,length,dis2origin;
+		int votes;
+		bool visited,found;
+
+	public:
+		Line();
+		Line(Point2d p0,Point2d p1);
+		Line(float k,float b);
+　　　　　
+		virtual double getx(float y);
+		virtual double gety(float x);
+		bool operator<(const Line &l) const
+		{
+			return (this->length < l.length);
+		}
+		virtual ~Line();
+};
+
+
+4.1.3 Kalman滤波类CKalmanFilter
+class CKalmanFilter
+{
+public:
+	CKalmanFilter(vector<Vec2f>);
+	~CKalmanFilter();
+	vector<Vec2f> predict();
+	vector<Vec2f> update(vector<Vec2f>);
+
+	KalmanFilter* kalman;
+	vector<Vec2f> prevResult;
+};
+
+4.2 算法实现
+4.2.1 初始化
+　　　算法的第一次初始化在LaneDetecProcessor的构造函数中进行，主要进行：
+　　　1.设置LaneDetecProcessor功能的标志laneType.
+　　　2.初始化Kalman估计器。
+4.2.2 图像预处理
+　　　将输入待处理的图像转化为灰度图像处理，并统一resize到320*240分辨率。
+4.2.3 边缘检测
+　　　检测灰度图像的边缘点。[接口]
+4.2.4 检测直线
+　　　检测边缘图像中存在的直线。[接口]
+4.2.5 直线跟踪和估计
+　　　将检测到的直线参数作为测量参数用于Kalman滤波器的更新参数，并估计出下一帧车道线的位置。
+4.3 接口说明
+4.3.1 边缘检测
+　　　Mat LaneDetecProcessor::findEdges(const Mat& grayImage);
+　　　参数：
+　　　grayImage: 输入图像，注意必须是灰度图像。
+　　　返回值：
+　　　边缘点图像。
+　　　检测灰度图像grayImage的边缘点，边缘点类型由LaneDetecProcessor::edgeType确定，有3种类型：
+　　　VERTICAL_EDGES ：竖直边缘点；
+　　　HORIZONTAL_EDGES ：水平边缘；
+　　　ALL_EDGES ： 所有边缘
+4.3.2 直线检测
+vector<Line> LaneDetecProcessor::findLines(const Mat& edgeImage)
+　　　参数：
+　　　　　edgeImage: 输入图像，必须是二值边缘图像
+　　　返回值：
+　　　    检测到的直线，最终对于SINGLE_LANE检测只返回2条直线，MULTI_LANE检测可能返回多条直线。
+　　　检测边缘图像中的车道线所在的直线，直线的条数由LaneDetecProcessor::laneType确定，有2中类型：
+　　　SINGLE_LANE ：单车道检测，即车道线为2条；
+　　　MULTI_LANE	 ： 多车道检测，车道线未知，可能为多条。
+　　　该函数首先用Hough变换检测直线，由于检测精度设置以及边缘点检测精度等原因，实际中同一条直线上的点可能检测出多条Hough直线来，因此函数中还对直线进行了过滤和聚类操作，最终对于SINGLE_LANE检测只返回2条直线，MULTI_LANE检测可能返回多条直线。
+　　　
+　　　
+
